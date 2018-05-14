@@ -3,7 +3,6 @@ AIS Magellan Library is designed for connect to Magellan IoT Platform.
 The library is using Software Serial for communication with Arduino board.
 
 ### Call Library:
-	include library
 	#include "Magellan.h"
 	Magellan magel;
 
