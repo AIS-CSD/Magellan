@@ -1,6 +1,6 @@
 #include "Magellan.h"
 Magellan magel;
-char auth[]="4e4371e0-d030-11e7-ab12-3bdd0ed7935b"; 		//Token Key you can get from magellan platform
+char auth[]="your-key"; 		//Token Key you can get from magellan platform
 
 String payload;
 
