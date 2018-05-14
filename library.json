@@ -1,0 +1,19 @@
+{
+  "name": "Magellan",
+  "frameworks": "Arduino",
+  "keywords": "AIS, NB-IoT, BC95, Magellan, Quectel",
+  "description": "Arduino Library for AIS Magellan",
+  "url": "https://github.com/AIS-CSD/Magellan",
+  "authors":
+  {
+    "name": "Advanced Info Service Plc./Connectivity as Ser.Platform Development Team",
+    "maintainer": true
+  },
+  "repository":
+  {
+      "type": "git",
+      "url": "https://github.com/AIS-CSD/Magellan.git"
+  }, 
+  "version": "1.57",
+  "platforms": "*"
+}
