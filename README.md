@@ -2,7 +2,7 @@
 # AIS Magellan Library
 
 	AIS Magellan Library is designed for connect to Magellan IoT Platform.
-	Please register with <https://www.aismagellan.io> for see more detial about user guide. 
+	Please register with https://www.aismagellan.io for see more detial about user guide. 
 	
 	Note The library is using Software Serial for communication with NB-IoT BC95 Shield board.
 
