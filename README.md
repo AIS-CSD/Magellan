@@ -64,5 +64,4 @@ Note The library is using Software Serial for communication with NB-IoT BC95 Shi
 # Quick Started
   1. Connect `DEVIO NB-SHIELD I` to your Arduino Board
   2. Open examples POST_MAGELLAN and replace token key in code.
-  3. Upload to your arduino board
-  4. Enjoy with [aismagellan](https://www.aismagellan.io)
+  3. Upload to your arduino board and Enjoy with [aismagellan](https://www.aismagellan.io)
