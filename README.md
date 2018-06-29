@@ -1,10 +1,10 @@
 ![alt text](https://www.aismagellan.io/modules/core/client/img/logo-logo-84-px@3x.png "Magellan")
 # AIS Magellan Library
 
-	AIS Magellan Library is designed for connect to Magellan IoT Platform.
-	Please register with https://www.aismagellan.io for see more detial about user guide. 
-	
-	Note The library is using Software Serial for communication with NB-IoT BC95 Shield board.
+AIS Magellan Library is designed for connect to Magellan IoT Platform.
+Please register with [aismagellan](https://www.aismagellan.io)  for see more detial about user guide. 
+
+Note The library is using Software Serial for communication with NB-IoT BC95 Shield board.
 
 ### supported board and hardware competible
   
