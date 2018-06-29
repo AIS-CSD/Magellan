@@ -16,10 +16,10 @@ Note The library is using Software Serial for communication with NB-IoT BC95 Shi
 	- Altsoftserial
 
 ### Call Library:
-'''C++
+```C++
 	#include "Magellan.h"
 	Magellan magel;
-'''
+```
 ### Initial Magellan Library:
 	magel.begin(your-key);           //init Magellan LIB
 
