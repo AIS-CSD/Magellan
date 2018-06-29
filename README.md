@@ -21,20 +21,21 @@ Note The library is using Software Serial for communication with NB-IoT BC95 Shi
 	Magellan magel;
 ```
 ### Initial Magellan Library:
+```C++
 	magel.begin(your-key);           //init Magellan LIB
-
+```
 ### Payload Data: 
 	Please use payload in JSON format 
 	
 	Example {"Temperature":25,"Humidity":90}
-
+```C++
 		payload="{\"Temperature\":"+Temperature+",\"Humidity\":"+Humidity+"}";
-
+```
 ### Post Data:
 	For post payload to Magellan
-
+```C++
 		magel.post(payload);
-
+```
 ### Example Magellan payload format
 	Mark location on MAP
 	Example
