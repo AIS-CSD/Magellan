@@ -11,8 +11,8 @@
 	Example for post random data to Magellan IoT Platform
 	please use payload with json format e.g. {"Temperature":25.5,"Humidity":90.4}
 	and {"Location":["13.001","100.44"]} for plot the location on MAP
-						          |        |
-					        latitude  longitude 
+			     |        |
+		        latitude  longitude 
 
 	and {"Lamp":0} or {"Lamp":1"} for show the Lamp status on dashboard
 */
