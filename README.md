@@ -1,6 +1,15 @@
 # AIS Magellan Library
 AIS Magellan Library is designed for connect to Magellan IoT Platform. 
-The library is using Software Serial for communication with Arduino board.
+The library is using Software Serial for communication with NB-IoT BC95 Shield board.
+
+### supported board and hardware competible
+  
+  Arduino UNO please use software serial on pin8=RX pin9=TX and pin4=RST
+  Arduino MEGA please use software serial on pin48=RX pin46=TX and pin4=RST 
+  NUCLEO_L476RG please use Hardware serial on pin2=RX pin8=TX and pin4=RST
+  
+### Installing Prerequisite Library
+	- Altsoftserial
 
 ### Call Library:
 	#include "Magellan.h"
@@ -38,7 +47,7 @@ The library is using Software Serial for communication with Arduino board.
 		payload={"Lamp":1}
 
 ### Note
-	The Magellan library is already include the Altsoftserial library. 
+	The Magellan library is not include the Altsoftserial library.please install it before use the magellan Lib 
 
 # Quick Started
   1. Connect `DEVIO NB-SHIELD I` on Arduino Board
