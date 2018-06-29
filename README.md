@@ -12,6 +12,12 @@ Note The library is using Software Serial for communication with NB-IoT BC95 Shi
   	Arduino MEGA please use software serial on pin48=RX pin46=TX and pin4=RST 
   	NUCLEO_L476RG please use Hardware serial on pin2=RX pin8=TX and pin4=RST
   
+| Boards        | Pin RX | Pin TX  | Pin RESET |
+| ------------- |:------:| -------:| ---------:|
+| Arduino UNO   |    8   |    9    |	  4    |
+| Arduino MEGA  |   48   |   46    | 	  4    |
+| NUCLEO_L476RG |    2   |    8    |      4    |
+
 ### Installing Prerequisite Library
 	- Altsoftserial
 
