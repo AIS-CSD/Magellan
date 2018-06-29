@@ -1,4 +1,4 @@
-![alt text](https://www.aismagellan.io/modules/core/client/img/img_logo_B01.png "Logo Title Text 1")
+![alt text](https://www.aismagellan.io/modules/core/client/img/logo-logo-84-px@3x.png "Logo Title Text 1")
 # AIS Magellan Library
 
 	AIS Magellan Library is designed for connect to Magellan IoT Platform. 
