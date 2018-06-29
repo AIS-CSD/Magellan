@@ -1,11 +1,12 @@
 /*
-Magellan v1.57 NB-IoT Playgroud Platform .
+Magellan v2.3.6 NB-IoT Playgroud Platform .
 support Quectel BC95 
 NB-IoT with AT command
 
 supported board and hardware competible
   Arduino UNO please use software serial on pin8=RX pin9=TX and pin4=RST
   Arduino MEGA please use software serial on pin48=RX pin46=TX and pin4=RST 
+  NUCLEO_L476RG please use Hardware serial on pin2=RX pin8=TX and pin4=RST
 
 Develop with coap protocol 
 reference with 
@@ -25,150 +26,42 @@ https://www.aismagellan.io
 
 Author:   Phisanupong Meepragob
 Create Date:     1 May 2017. 
-Modified: 14 May 2018.
+Modified: 21 June 2018.
 
 (*bug fix can not get response form buffer but can send data to the server)
-(*bug fix get method retransmit message)
-(*bug fix multiple definition variable with AIS_NB_BC95)
+(*v1.58.1 bug fix get method retransmit message)
+(*v2.1.0 bug fix multiple definition variable with AIS_NB_BC95)
+(*v2.1.1 bug fix get method retransmit)
+(*v2.1.2 bug fix REBOOT CAUSE by hardware (BC95 hardware reset))
+(*v2.2.2 bug fix check hardware connection with NB-Shield module)
+(*v2.3.0 add feature get data from dashboard)
+(*v2.3.1 bug fix disable print state when server send repeat response)
+(*v2.3.2 bug fix init test AT command and include hardware check information)
+(*v2.3.3 add IMSI information)
+(*v2.3.4 bug fix display matching with msg id )
+(*v2.3.5 bug fix repeat scan if hardware connection error! )
+(*v2.3.6 bug fix lost communication with NB-IoT Module! )
 Released for private use.
 */
 
 #include "Magellan.h"
+Magellan nbiot;
 
-AltSoftSerial moduleserial;
+#if defined( __ARDUINO_X86__)
+    #define Serial_PORT Serial1
+#elif defined(ARDUINO_NUCLEO_L476RG)
+    #define Serial_PORT Serial1
+#elif defined(ARDUINO_AVR_UNO) || (ARDUINO_AVR_MEGA2560)
+    AltSoftSerial moduleserial;
+#else 
+    AltSoftSerial moduleserial;
+#endif 
+
 const char serverIP[] = "103.20.205.85";
-char *pathauth;
-
-unsigned int Msg_ID=0;
-
-//################### Buffer #######################
-String data_input;
-String data_buffer;
-String send_buffer;
-String rcvdata="";
-//################### counter value ################
-byte k=0;
-//################## flag ##########################
-bool end=false;
-bool send_NSOMI=false;
-bool flag_rcv=true;
-bool en_get=true;
-bool en_post=true;
-bool en_send=true;
-bool en_chk_buff=false;
-bool getpayload=false;
-bool Created=false;
-bool sendget=false;
-bool NOTFOUND=false;
-bool GETCONTENT=false;
-bool RCVRSP=false;
-bool success=false;
-bool connected=false;
-bool get_process=false;
-bool post_process=false;
-bool ACK=false;
-bool send_ACK=false;
-//################### Parameter ####################
-//unsigned int send_cnt=0;
-unsigned int resp_cnt=0;
-unsigned int resp_msgID=0;
-unsigned int get_ID=0;
-unsigned int auth_len=0;
-unsigned int path_hex_len=0;
-//-------------------- timer ----------------------
-//long data_interval=10000;
-//unsigned int Latency=2000;
-unsigned int previous_send=0;
-//unsigned int previous_get=0;
-unsigned long previous=0;
-unsigned int wait_time=5;
-//################### Diagnostic & Report ###########
-byte maxtry=0;
-byte cnt_retrans=0;
-byte cnt_retrans_get=0;
-byte cnt_error=0;
-byte cnt_cmdgetrsp=0;
-String LastError="";
-
 
 Magellan::Magellan()
 {
 }
-/*-------------------------------
-    Check NB Network connection
-    Author: Device innovation Team
-  -------------------------------
-*/
-/*
-bool Magellan:: getNBConnect()
-{
-  _Serial->println(F("AT+CGATT?"));
-  AIS_BC95_RES res = wait_rx_bc(500,F("+CGATT"));
-  bool ret;
-  if(res.status)
-  {
-    if(res.data.indexOf(F("+CGATT:0"))!=-1)
-      ret = false;
-    if(res.data.indexOf(F("+CGATT:1"))!=-1)
-      ret = true;
-  }
-  res = wait_rx_bc(500,F("OK"));
-  return(ret);
-}
-*/
-
-/*-------------------------------
-  Check response from BC95
-  Author: Device innovation Team
-  -------------------------------
-*/
-
-/*
-AIS_BC95_RES Magellan:: wait_rx_bc(long tout,String str_wait)
-{
-  unsigned long pv_ok = millis();
-  unsigned long current_ok = millis();
-  String data_input;
-  unsigned char flag_out=1;
-  unsigned char res=-1;
-  AIS_BC95_RES res_;
-  res_.temp="";
-  res_.data = "";
-
-  while(flag_out)
-  {
-    if(_Serial->available())
-    {
-      data_input = _Serial->readStringUntil('\n');
-      
-      res_.temp+=data_input;
-      if(data_input.indexOf(str_wait)!=-1)
-      {
-        res=1;
-        flag_out=0;
-      } 
-        else if(data_input.indexOf(F("ERROR"))!=-1)
-      {
-        res=0;
-        flag_out=0;
-      }
-    }
-    current_ok = millis();
-    if (current_ok - pv_ok>= tout) 
-    {
-      flag_out=0;
-      res=0;
-      pv_ok = current_ok;
-    }
-  }
-  
-  res_.status = res;
-  res_.data = data_input;
-  data_input="";
-  return(res_);
-}
-*/
-
 /*------------------------------
   Connect to NB-IoT Network
               &
@@ -177,99 +70,131 @@ AIS_BC95_RES Magellan:: wait_rx_bc(long tout,String str_wait)
 */
 bool Magellan::begin(char *auth)
 {
+
   bool created=false;
-  moduleserial.begin(9600);
-  _Serial = &moduleserial;
   
-  Serial.println(F("               AIS BC95 NB-IoT Magellan V1.57"));
-  //Serial.println(F("                  Magellan IoT Platform"));
-  //Serial.println(F("                 Welcome to NB-IoT network"));
-  
+
+  #if defined( __ARDUINO_X86__)
+      Serial1.begin(9600);
+      _Serial = &Serial1;
+  #elif defined(ARDUINO_NUCLEO_L476RG)
+      Serial1.begin(9600);
+      _Serial = &Serial1;
+  #elif defined(ARDUINO_AVR_UNO)
+      moduleserial.begin(9600);
+      _Serial = &moduleserial;
+  #elif defined(ARDUINO_AVR_MEGA2560)
+      moduleserial.begin(9600);
+      _Serial = &moduleserial;
+      Serial.println(F("PLEASE USE PIN RX=48 & TX=46"));
+  #else 
+      moduleserial.begin(9600);
+      _Serial = &moduleserial;
+  #endif 
+
+
+  Serial.println(F("               AIS BC95 NB-IoT Magellan V2.3.6"));
+
   /*---------------------------------------
       Initial BC95 Module 
     ---------------------------------------
   */
+  previous_check=millis();
+
   if(LastError!=""){
     Serial.print(F("LastError"));
     Serial.println(LastError);    
   }
+  check_module_ready();
+
+  if (!hw_connected)
+  {
+    en_post=false;
+    en_get=false;
+    return false;
+  }
+  reboot_module();
+  setup_module();
+ 
+  auth_len=0;
+  pathauth=auth;
+  cnt_auth_len(pathauth);
+
+  if(auth_len>13){
+    path_hex_len=2;
+  }
+  else{
+    path_hex_len=1;
+  }
+  
+  previous=millis();
+  created=true;
+  previous_time_get=millis();
 
 
-  Serial.print(F(">>Rebooting "));
+  return created;
+}
+
+void Magellan::reboot_module()
+{
+
+  Serial.println(F(">>Rebooting "));
   _Serial->println(F("AT+NRB"));
   delay(100);
-  /*
-  AIS_BC95_RES res = wait_rx_bc(6000,F("OK"));
-  if(res.status)
-  {
-    Serial.println(res.data);
-  }
-  */
+
   while(1){
     if(_Serial->available()){
       data_input = _Serial->readStringUntil('\n');
-      Serial.println(data_input);
       if(data_input.indexOf(F("OK"))!=-1){
-        Serial.println(F("OK"));
+        Serial.println(data_input);
         break;
       }
-      //else{
-      //  Serial.print(F("."));
-        //delay(2000);
-      //}
+      else{
+        if (data_input.indexOf(F("REBOOT_"))!=-1)
+        {
+          Serial.println(data_input);
+        }
+        else{
+          Serial.print(F("."));
+        }
+      }
     }
   }
+  delay(6000);
+
+}
+
+void Magellan::setup_module()
+{
   data_input="";
-  //delay(5000);
   Serial.print(F(">>Setting"));
   _Serial->println(F("AT+CMEE=1"));
   delay(500);
   Serial.print(F("."));
-  /*--------------------------------------
-      Pre Test AT command
-    --------------------------------------
-  */
-
-  /*
-  _Serial->println(F("AT"));
-  res = wait_rx_bc(1000,F("OK"));
-  _Serial->println(F("AT"));
-  res = wait_rx_bc(1000,F("OK"));
-  */
-
-  //_Serial->println(F("AT"));
-  //res = wait_rx_bc(1000,F("OK"));
 
   /*--------------------------------------
       Config module parameter
     --------------------------------------
   */
-  //if(debug) Serial.println(F(">>Setup CFUN"));
   _Serial->println(F("AT+CFUN=1"));
   delay(6000);
   Serial.print(F("."));
   _Serial->println(F("AT+NCONFIG=AUTOCONNECT,true"));
-  delay(1000);
+  delay(6000);
   Serial.println(F("OK"));
-  //Serial.println(F(">>Connecting to network"));
   _Serial->println(F("AT+CGATT=1"));
   delay(1000);
   Serial.print(F(">>Connecting"));
+  _serial_flush();
   /*--------------------------------------
       Check network connection
     --------------------------------------
   */
-  /*
-  while(!connected){
-    connected=getNBConnect();
-    Serial.print(F("."));
-    delay(2000);
-  }
-  */
+
   while(1){
     if(_Serial->available()){
       data_input = _Serial->readStringUntil('\n');
-      //Serial.println(data_input);
+      if(debug) Serial.println(data_input);
       if(data_input.indexOf(F("+CGATT:1"))!=-1){
         break;
       }
@@ -286,25 +211,70 @@ bool Magellan::begin(char *auth)
   Serial.println(F("OK"));
   _Serial->println(F("AT+NSOCR=DGRAM,17,5684,1"));
   delay(6000);
- 
-
-  auth_len=0;
-  pathauth=auth;
-  cnt_auth_len(pathauth);
-
-  if(auth_len>13){
-    path_hex_len=2;
+  _serial_flush();
+  data_input="";
+  Serial.print(F(">>IMSI "));
+  _Serial->println(F("AT+CIMI"));
+  while(1){
+    
+    if(_Serial->available()){
+      data_input = _Serial->readStringUntil('\n');
+      if(data_input.indexOf(F("OK"))!=-1){
+        break;
+      }
+      else{
+        Serial.print(data_input);
+      }
+    }
   }
-  else{
-    path_hex_len=1;
-  }
-  
-  previous=millis();
-  created=true;
-
-  return created;
+  Serial.println();
+  _serial_flush();
+    
 }
 
+void Magellan::check_module_ready()
+{
+  _Serial->println(F("AT"));
+  delay(100);
+  _Serial->println(F("AT"));
+  while(1){
+    if(_Serial->available()){
+      data_input = _Serial->readStringUntil('\n');
+      if(data_input.indexOf(F("OK"))!=-1){
+        hw_connected=true;
+        break;
+      }
+    }
+    else{
+      unsigned int current_check=millis();
+      if (current_check-previous_check>5000)
+      {
+        Serial.println(F("Error to connect NB Module try reset or check your hardware"));
+        previous_check=current_check;
+        hw_connected=false;
+        //break;
+      }
+      else{
+        _Serial->println(F("AT"));
+        delay(100);
+      }
+    }
+  }
+
+  _serial_flush();
+}
+
+void Magellan::_serial_flush()
+{
+  while(1){
+    if(_Serial->available()){
+      data_input=_Serial->readStringUntil('\n');
+    }
+    else{
+      break;
+    }
+  }
+}
 /*------------------------------
     CoAP Message menagement 
   ------------------------------
@@ -455,36 +425,128 @@ void Magellan::cnt_auth_len(char *auth)
   }
 }
 
+unsigned int Magellan::option_len(unsigned int path_len)
+{
+  unsigned int len=0;
+    if (path_len>0)
+      {
+        if (path_len>13)
+        {
+          len=2;
+        }
+        else
+        {
+          len=1;
+        }
+      }
+  return len+path_len;
+}
+
+void Magellan::print_uripath(String uripath)
+{
+    unsigned int uripathlen=uripath.length();
+    if (uripathlen>0)
+      {
+          print_pathlen(uripathlen,"0");
+          
+          char data[uripath.length()+1]="";
+          uripath.toCharArray(data,uripath.length()+1);
+
+          printHEX(data);
+      }
+}
 /*----------------------------- 
     CoAP Method POST
   -----------------------------
 */
 String Magellan::post(String payload)
 {
-  success=false;
-  unsigned int prev_send=millis();
-  
-  while(!success && !get_process){
-    send(payload);
-    waitResponse();
-
-    unsigned int cur_send=millis();
-    if ((cur_send-prev_send>10000) && send_ACK)
-    {
-      if(printstate) Serial.println(F("Rsp Timeout"));
-      
-      en_post=true;
-      en_get=true;
-
-      flag_rcv=true;
-      post_process=false;
-      prev_send=cur_send;
-      send_ACK=false;
-      break;
-
+  #if defined(ARDUINO_AVR_PRO) || (ARDUINO_AVR_UNO)
+    if(payload.length()>100){
+      Serial.println("Warning payload size exceed the limit of memory");
     }
-  }
+    else{
+      return post_data(payload,"","","");
+    }
+  #else
+    return post_data(payload,"","","");
+  #endif
+  
+}
+String Magellan::linenotify(String token,String msg)
+{
+  return post_data(msg,"Linenotify",token,"");
+}
+String Magellan::post_data(String payload,String option1,String option2,String option3)
+{
+  unsigned int timeout[5]={2000,4000,8000,16000,32000};
+  unsigned int prev_send=millis();
+
+  if(!get_process && en_post){
+    data_buffer="";
+    previous_send=millis();
+    send_ACK=false;
+    ACK=false;
+    success=false;
+    token=random(0,32767);
+    post_token=token;
+    if(debug) Serial.println(F("Load new payload"));
+    Msg_ID++;
+    for (byte i = 0; i <= 4; ++i)
+    {
+      post_process=true;
+      en_chk_buff=false;
+      post_ID=Msg_ID;
+      Msgsend(payload,option1,option2,option3);
+
+      
+      while(true)
+      {
+        en_chk_buff=true;
+        waitResponse();
+        unsigned int currenttime=millis();
+        if (currenttime-previous_send>timeout[i] || success)
+        {
+          if(debug) Serial.println(currenttime-previous_send);
+          previous_send=currenttime;
+          en_post=true;
+          en_get=true;
+          post_process=false;
+          break;
+        }
+      }
+      if (success)
+      {
+        break;
+      }
+      else{
+            if(i+1<5){
+              if(printstate) Serial.print(F(">> Retransmit"));
+              if(printstate) Serial.println(i+1);
+              if(printstate) Serial.println(timeout[i+1]);
+            }
+
+      }
+
+     }
+     if (!success)
+     {
+       if(printstate) Serial.println(F("timeout"));
+        data_input="";
+        do{
+            check_module_ready();
+        }
+        while(!hw_connected);
+        reboot_module();
+        setup_module();
+        
+     }
+    }
+
+    
+
   post_process=false;
+  _Serial->flush();
   return data_buffer;
 }
 
@@ -492,44 +554,80 @@ String Magellan::post(String payload)
     CoAP Method GET
   -----------------------------
 */
-String Magellan::get(String Resource,String Report="")
+String Magellan::get(String Resource)
+{
+  return get_data(Resource,"");
+}
+String Magellan::get_dashboard(String Resource)
+{
+  return get_data("dashboard."+Resource,"");
+}
+String Magellan::get_api(String Resource,String Proxy)
+{
+  #if defined(ARDUINO_AVR_PRO) || (ARDUINO_AVR_UNO)
+    return "Warning this module has not enough memory";
+  #else
+    return get_data(Resource,Proxy);
+  #endif
+
+  
+}
+String Magellan::get_data(String Resource,String Proxy)
 {
 
-  int timeout[5]={2000,4000,8000,16000,32000};
-  unsigned int previous_time=millis();
+  int timeout[5]={8000,16000,32000,64000,128000};
+  rcvdata="";
+  data_buffer="";
   if(!post_process && en_get){
-    for (int i = 0; i < 4; ++i)
-      {
-        get_process=true;
-        get_data(Resource);
-        while(true)
+    do{
+      GETCONTENT=false;
+      ACK=false;
+      Msg_ID++;
+      get_ID=Msg_ID;
+      token=random(0,32767);
+      get_token=token;
+      success=false;
+      for (int i = 0; i <=4; ++i)
         {
-          unsigned int current_time=millis();
+          get_process=true;
+          data_buffer="";
+          Msgget(Resource,Proxy);          
+          
+          en_chk_buff=false;
+          while(true)
+          {
+            en_chk_buff=true;
+            unsigned int current_time=millis();
+            
 
-          if(current_time-previous_time>timeout[i]){
-            previous_time=current_time;
-            if(i==4){
-              if(printstate) Serial.println(F("Get timeout"));
-              get_process=false;
+            if(current_time-previous_time_get>timeout[i] || success || (ACK && more_flag) || NOTFOUND){
+              previous_time_get=current_time;
+              if(i==4){
+                if(printstate) Serial.println(F(">> Get timeout"));
+                get_process=false;
+              }
+              if(debug) Serial.println(F("break"));
+              break;
             }
+            waitResponse();
+            
+          }
+
+
+          if((rcvdata.length()>0 && GETCONTENT && !more_flag) || success || NOTFOUND){
+            get_process=false;
             break;
           }
-          waitResponse();
-        }
+          else{
 
+			  if(printstate) Serial.print(F(">> Retransmit"));
+			  if(printstate) Serial.println(i+1);
+			  if(printstate) Serial.println(timeout[i]);
+            
 
-        if(rcvdata.length()>0 && GETCONTENT){
-          get_process=false;
-          break;
+          }
         }
-        else{
-          if(printstate) Serial.print(F("Retransmit"));
-          if(printstate) Serial.println(i+1);
-
-          //if(printstate) Serial.print(F("wait_time :"));
-          if(printstate) Serial.println(timeout[i]);
-        }
-      }
+      }while(more_flag);
   }
   return rcvdata;
 }
@@ -538,85 +636,15 @@ String Magellan::get(String Resource,String Report="")
     Massage Package
   -----------------------------
 */
-void Magellan::send(String payload,int style=1,int interval=20)
+void Magellan::Msgsend(String payload,String option1,String option2,String option3)
 {
-  AIS_BC95_RES res;
-  _Serial->flush();
 
-  unsigned int currenttime=millis();
-
-  //retransmit data
-  if(!flag_rcv && cnt_retrans>=4){
-    if(printstate) Serial.println(F("Timeout"));
-    _Serial->println(F("AT"));
-    
-    /*
-    res = wait_rx_bc(100,F("OK"));
-    if(res.status)
-    {
-      if(printstate) Serial.println(res.data);
-    }
-    */
-  }
-
-  //Load new payload for send
-  if(flag_rcv || cnt_retrans>=4)
-  {
-    //if(printstate) Serial.println(F("Load new payload"));
-    send_buffer=payload;
-    Msg_ID++;
-
-    cnt_retrans=0;
-    en_chk_buff=false;
-    en_send=true;
-    wait_time=2;
-    data_buffer="";				//Ver 1.54
-  }
-  else{
-
-    if (en_post)
-    {
-      en_chk_buff=true;
-      unsigned int Difftime=currenttime-previous_send;
-      if(Difftime>=wait_time*1000){
-
-        //if(debug) Serial.print(F("Difftime :"));
-        //if(debug) Serial.println(Difftime);
-        if(printstate) Serial.println();
-        if(printstate) Serial.print(F("wait_time :"));
-        if(printstate) Serial.println(wait_time*1000);
-
-        if(printstate) Serial.print(F("Retransmit :"));
-        if(printstate) Serial.println(cnt_retrans+1);
-
-        cnt_retrans++;
-        previous_send=currenttime;
-        en_send=true;
-      }
-      else{
-        en_send=false;
-      }
-
-
-      if(cnt_retrans>=4){
-        post_process=false;
-        success=true;
-      } 
-    }
-  }
-
+  send_buffer=payload;
   char data[send_buffer.length()+1]="";
   send_buffer.toCharArray(data,send_buffer.length()+1);
   
-  if(debug) Serial.println(resp_msgID);
+  if(en_post){
 
-  if(en_send && en_post){
-      post_process=true;
-      ACK=false;
-
-      //send_cnt++;
-      //if(printstate) Serial.print(F("post cnt :"));
-      //if(printstate) Serial.println(send_cnt);
       if(printstate) Serial.print(F(">> post: Msg_ID "));
       if(printstate) Serial.print(Msg_ID);
       if(printstate) Serial.print(F(" "));
@@ -626,65 +654,48 @@ void Magellan::send(String payload,int style=1,int interval=20)
       _Serial->print(serverIP);
       _Serial->print(F(",5683,"));
 
-      //if(debug) Serial.print(F("AT+NSOST=0,")); 
-      //if(debug) Serial.print(serverIP);
-      //if(debug) Serial.print(F(",5683,")); 
+      unsigned int buff_len=auth_len+11+2+path_hex_len+send_buffer.length();
+      unsigned int option1_len=option1.length();
+      unsigned int option2_len=option2.length();
+      unsigned int option3_len=option3.length();
 
+      buff_len+=option_len(option1_len);
+      buff_len+=option_len(option2_len);
+      buff_len+=option_len(option3_len);
 
-      //if(debug) Serial.print(auth_len+11+path_hex_len+send_buffer.length());
-      _Serial->print(auth_len+11+path_hex_len+send_buffer.length());
+      _Serial->print(buff_len);
+      if(debug) Serial.print(F(",4202"));
 
-      //if(debug) Serial.print(F(",4002"));
-      _Serial->print(F(",4002"));
+      _Serial->print(F(",4202"));
       printmsgID(Msg_ID);
+      printmsgID(post_token);                     //print token
       _Serial->print(F("b54e42496f54"));
-      //if(debug) Serial.print(F("b54e42496f54"));
+      if(debug) Serial.print(F("b54e42496f54"));
       print_pathlen(auth_len,"0");
 
       printHEX(pathauth);
+
+      print_uripath(option1);
+      print_uripath(option2);
+      print_uripath(option3);
+
+      //_Serial->print(F("1132"));                 //content-type json
       _Serial->print(F("ff")); 
-      //if(debug) Serial.print(F("ff"));
+      if(debug) Serial.print(F("ff"));
       printHEX(data);  
       _Serial->println();
 
       if(printstate) Serial.println();
       
-      switch (cnt_retrans) {
-        case 1:
-          // statements
-          wait_time=4;
-          break;
-        case 2:
-          // statements
-          wait_time=8;
-          break;
-        case 3:
-          // statements
-          wait_time=16;
-          break;
-        case 4:
-          // statements
-          wait_time=32;
-          break;
-        //default:
-          // statements
-      }
-
-      //if(printstate) Serial.println(wait_time*1000);
-      flag_rcv=false;
-      previous_send=millis();
   }   
 }
 
-String Magellan::get_data(String Resource)
+void Magellan::Msgget(String Resource,String Proxy)
 {
   
   char data[Resource.length()+1]="";
   Resource.toCharArray(data,Resource.length()+1); 
-  GETCONTENT=false;
-  ACK=false;
-  Msg_ID++;
-  get_ID=Msg_ID;
+
   if(printstate) Serial.print(F(">> GET data : Msg_ID "));
   if(printstate) Serial.print(Msg_ID);
   if(printstate) Serial.print(" ");
@@ -694,41 +705,73 @@ String Magellan::get_data(String Resource)
   _Serial->print(serverIP);
   _Serial->print(F(",5683,"));
 
-  //if(debug) Serial.print(F("AT+NSOST=0,")); 
-  //if(debug) Serial.print(serverIP);
-  //if(debug) Serial.print(F(",5683,")); 
+  if(debug) Serial.print(F("AT+NSOST=0,")); 
+  if(debug) Serial.print(serverIP);
+  if(debug) Serial.print(F(",5683,")); 
 
   unsigned int path_len=Resource.length();
+  unsigned int buff_len=0;
   if(path_len>13){
-    if(debug) Serial.print(52+path_len);
-    _Serial->print(52+path_len);
+    buff_len=52+path_len;
   }
   else{
-    if(debug) Serial.print(51+path_len);
-    _Serial->print(51+path_len);
+    buff_len=51+path_len;
   }
 
-  //if(debug) Serial.print(F(",4001"));
-  _Serial->print(F(",4001"));
+  if(Resource.indexOf(F("API"))!=-1){
+    buff_len=buff_len+2+Proxy.length();
+    if(debug) Serial.print(buff_len);
+  }
+
+  _Serial->print(buff_len+2);
+  if(debug) Serial.print(F(",4201"));
+  _Serial->print(F(",4201"));
   printmsgID(Msg_ID);
+  printmsgID(get_token);                     //print token
   _Serial->print(F("b54e42496f54"));
-  //if(debug) Serial.print(F("b54e42496f54"));
+  if(debug) Serial.print(F("b54e42496f54"));
   _Serial->print(F("0d17"));
-  //if(debug) Serial.print(F("0d17"));
+  if(debug) Serial.print(F("0d17"));
   printHEX(pathauth);
 
   print_pathlen(path_len,"4");
 
   printHEX(data);
 
-  _Serial->print(F("8106"));
+  _Serial->print(F("8104"));      //Block size 256 recommended for BC95 with CoAP Header
+  if(debug) Serial.print(F("8104"));
+
+  //_Serial->print(F("8105"));      //Block size 512 recommended for BC95
+  //if(debug) Serial.print(F("8105"));
+  //_Serial->print(F("8106"));    //Block size 1024
   //if(debug) Serial.print(F("8106"));
+  
+  /* ##########################
+      Proxy Uri additional
+     ########################## 
+  */ 
+  if(Resource.indexOf(F("API"))!=-1){
+
+      char data[Proxy.length()+1]="";
+      Proxy.toCharArray(data,Proxy.length()+1); 
+
+      //if(debug) Serial.print(F("420184"));    //Block size 256 recommended for BC95 with CoAP Header
+      //_Serial->print(F("420184")); 
+      //if(debug) Serial.print(F("420185"));  //Block size 512 recommended for BC95
+      //_Serial->print(F("420185"));   
+      //print_pathlen(Proxy.length(),"8");
+      print_pathlen(Proxy.length(),"c");
+      printHEX(data);
+  }
+
+
 
   _Serial->println();
 
+  _Serial->flush();
+
   if(printstate) Serial.println();
   sendget=true;
-  return rcvdata;
 }
 
 /*-------------------------------------
@@ -741,150 +784,186 @@ String Magellan::get_data(String Resource)
     Payload:200
   -------------------------------------
 */
-void Magellan::print_rsp_header(const String Msgstr)
+void Magellan::print_rsp_header(String Msgstr)
 {
-  
+
+  if(debug) Serial.println(Msgstr);
+
   resp_msgID = (unsigned int) strtol( &Msgstr.substring(4,8)[0], NULL, 16);
   print_rsp_Type(Msgstr.substring(0,2),resp_msgID);
 
-   switch((int) strtol(&Msgstr.substring(2,4)[0], NULL, 16))
+  bool en_print=(post_process && resp_msgID==post_ID) || (get_process && resp_msgID==get_ID);
+
+  switch((int) strtol(&Msgstr.substring(2,4)[0], NULL, 16))
    {
+      case EMPTY:
+                    EMP=true;
+                    Msgstr.remove(0, 8);
+                    break;
       case CREATED: 
+                    EMP=false;
                     NOTFOUND=false;
                     GETCONTENT=false;
                     RCVRSP=true;
-                    //if(printstate) Serial.println(F("2.01 CREATED")); 
+
+                    if (Msgstr.length()/2>4)
+                    {
+                      rsptoken=(unsigned int) strtol( &Msgstr.substring(8,12)[0], NULL, 16);
+                      if (post_process && post_token==rsptoken)
+                      {
+                        if(debug) Serial.println(F("match token"));
+                        if(debug) Serial.print(rsptoken);
+                        success=true;
+                        
+                      }
+
+                      Msgstr.remove(0, 12);
+                    }
+                    else{
+                      Msgstr.remove(0, 8);
+                    }
+
+                    if(printstate && en_print) Serial.println(F("2.01 CREATED")); 
                     break;
-      case DELETED: //if(printstate) Serial.println(F("2.02 DELETED")); 
+      case DELETED: //if(printstate && en_print) Serial.println(F("2.02 DELETED")); 
                     break;
-      case VALID: //if(printstate) Serial.println(F("2.03 VALID")); 
+      case VALID: //if(printstate && en_print) Serial.println(F("2.03 VALID"));
                   break;
-      case CHANGED: //if(printstate) Serial.println(F("2.04 CHANGED")); 
+      case CHANGED: //if(printstate && en_print) Serial.println(F("2.04 CHANGED"));
                   break;
       case CONTENT: 
+                    EMP=false;
                     NOTFOUND=false;
                     GETCONTENT=true;
                     RCVRSP=false;
-                    //if(printstate) Serial.println(F("2.05 CONTENT")); 
+                    if(get_process){
+                      String blocksize=Msgstr.substring(20,22);
+                      if(blocksize.indexOf(F("0C"))!=-1)
+                        {
+                          more_flag=true;
+                        } 
+                      if(blocksize.indexOf(F("04"))!=-1){ 
+                          more_flag=false;
+                        }
+
+                      if (Msgstr.length()/2>4)
+                      {
+                        rsptoken=(unsigned int) strtol( &Msgstr.substring(8,12)[0], NULL, 16);
+                        if (get_process && get_token==rsptoken)
+                        {
+                          if(debug) Serial.println(F("match token"));
+                          if(debug) Serial.print(rsptoken);
+                          //if(!more_flag) success=true;
+                          success=true;
+                          
+                        }
+                      }
+                    }
+                    Msgstr.remove(0, 8);
+                    if(printstate && en_print) Serial.println(F("2.05 CONTENT")); 
                     break;
-      case CONTINUE: //if(printstate) Serial.println(F("2.31 CONTINUE")); 
+      case CONTINUE: //if(printstate && en_print) Serial.println(F("2.31 CONTINUE"));
+                    Msgstr.remove(0, 8); 
                     break;
-      case BAD_REQUEST: //if(printstate) Serial.println(F("4.00 BAD_REQUEST")); 
+      case BAD_REQUEST: if(printstate && en_print) Serial.println(F("4.00 BAD_REQUEST"));
+                    Msgstr.remove(0, 8); 
                     break;
-      case FORBIDDEN: //if(printstate) Serial.println(F("4.03 FORBIDDEN")); 
+      case FORBIDDEN: if(printstate && en_print) Serial.println(F("4.03 FORBIDDEN"));
+                    Msgstr.remove(0, 8); 
                     break;
       case NOT_FOUND: 
-                    //if(printstate) Serial.println(F("4.04 NOT_FOUND"));
+                    if(printstate && en_print) Serial.println(F("4.04 NOT_FOUND"));
                     GETCONTENT=false; 
                     NOTFOUND=true;
                     RCVRSP=false;
                     break;
       case METHOD_NOT_ALLOWED: 
                     RCVRSP=false;
-                    //if(printstate) Serial.println(F("4.05 METHOD_NOT_ALLOWED")); 
+                    if(printstate && en_print) Serial.println(F("4.05 METHOD_NOT_ALLOWED")); 
                     break;
-      case NOT_ACCEPTABLE: //if(printstate) Serial.println(F("4.06 NOT_ACCEPTABLE")); 
+      case NOT_ACCEPTABLE: if(printstate && en_print) Serial.println(F("4.06 NOT_ACCEPTABLE")); 
                     break;
-      case REQUEST_ENTITY_INCOMPLETE: //if(printstate) Serial.println(F("4.08 REQUEST_ENTITY_INCOMPLETE")); 
+      case REQUEST_ENTITY_INCOMPLETE: //if(printstate && en_print) Serial.println(F("4.08 REQUEST_ENTITY_INCOMPLETE")); 
                     break;
-      case PRECONDITION_FAILED: //if(printstate) Serial.println(F("4.12 PRECONDITION_FAILED")); 
+      case PRECONDITION_FAILED: //if(printstate && en_print) Serial.println(F("4.12 PRECONDITION_FAILED")); 
                     break;
-      case REQUEST_ENTITY_TOO_LARGE: //if(printstate) Serial.println(F("4.13 REQUEST_ENTITY_TOO_LARGE")); 
+      case REQUEST_ENTITY_TOO_LARGE: //if(printstate && en_print) Serial.println(F("4.13 REQUEST_ENTITY_TOO_LARGE")); 
                     break;
-      case UNSUPPORTED_CONTENT_FORMAT: //if(printstate) Serial.println(F("4.15 UNSUPPORTED_CONTENT_FORMAT")); 
+      case UNSUPPORTED_CONTENT_FORMAT: if(printstate && en_print) Serial.println(F("4.15 UNSUPPORTED_CONTENT_FORMAT")); 
                     break;
-      case INTERNAL_SERVER_ERROR: //if(printstate) Serial.println(F("5.00 INTERNAL_SERVER_ERROR")); 
+      case INTERNAL_SERVER_ERROR: if(printstate && en_print) Serial.println(F("5.00 INTERNAL_SERVER_ERROR")); 
                     break;
-      case NOT_IMPLEMENTED: //if(printstate) Serial.println(F("5.01 NOT_IMPLEMENTED")); 
+      case NOT_IMPLEMENTED: //if(printstate && en_print) Serial.println(F("5.01 NOT_IMPLEMENTED")); 
                     break;
-      case BAD_GATEWAY: //if(printstate) Serial.println(F("5.02 BAD_GATEWAY")); 
+      case BAD_GATEWAY: if(printstate && en_print) Serial.println(F("5.02 BAD_GATEWAY")); 
                     break;
-      case SERVICE_UNAVAILABLE: //if(printstate) Serial.println(F("5.03 SERVICE_UNAVAILABLE")); 
+      case SERVICE_UNAVAILABLE: if(printstate && en_print) Serial.println(F("5.03 SERVICE_UNAVAILABLE")); 
                     break;
-      case GATEWAY_TIMEOUT: //if(printstate) Serial.println(F("5.04 GATEWAY_TIMEOUT")); 
+      case GATEWAY_TIMEOUT: if(printstate && en_print) Serial.println(F("5.04 GATEWAY_TIMEOUT")); 
                     break;
-      case PROXY_NOT_SUPPORTED: //if(printstate) Serial.println(F("5.05 PROXY_NOT_SUPPORTED")); 
+      case PROXY_NOT_SUPPORTED: if(printstate && en_print) Serial.println(F("5.05 PROXY_NOT_SUPPORTED")); 
                     break;
 
       default : //Optional
                 GETCONTENT=false;
    }
 
-   if(printstate) Serial.print(F("Msg_ID "));
+   if(printstate && en_print) Serial.print(F("   Msg_ID "));
 
    
-   //Serial.println(number);
-   if(printstate) Serial.print(resp_msgID);
+   if(printstate && en_print) Serial.println(resp_msgID);
 }
 
-void Magellan::print_rsp_Type(const String Msgstr,unsigned int msgID)
+void Magellan::print_rsp_Type(String Msgstr,unsigned int msgID)
 {
-  if(Msgstr.indexOf(ack)!=-1)
+  bool en_print=(post_process && resp_msgID==post_ID) || (get_process && resp_msgID==get_ID);
+
+
+  if(Msgstr.indexOf(ack)!=-1 || Msgstr.indexOf(acktk)!=-1)
   {
-    //if(printstate) Serial.println(F("Acknowledge"));
-    if(printstate) Serial.print(F("<< ACK: "));
+    
+    if(printstate && en_print) Serial.print(F("<< ACK: "));
+    if((resp_msgID==get_ID || resp_msgID==post_ID) && !EMP){
+		        ACK=true;
+	  }
+    
     flag_rcv=true;
-    post_process=false;
-    success=true;
     en_post=true;
     en_get=true;
-    ACK=true;
+    
     send_ACK=false;
     cnt_cmdgetrsp=0;
   }
-  if(Msgstr.indexOf(con)!=-1)
+  if(Msgstr.indexOf(con)!=-1 || Msgstr.indexOf(contk)!=-1)
   {
-    //if(printstate) Serial.println(F("Confirmation"));
-    if(printstate) Serial.print(F("<< CON: "));
-    //if(printstate) Serial.println();
-    resp_cnt++;
+    if(printstate && en_print) Serial.print(F("<< CON: "));
 
-    en_post=false;
-    en_get=false;
 
-    if (resp_cnt>5)
-    {
-      _Serial->print(F("AT+NSOST=0,"));
-      _Serial->print(serverIP);
-      _Serial->print(F(",5683,"));
-      _Serial->print(F("4"));
-      _Serial->print(F(",7000"));
-      printmsgID(msgID);
-      _Serial->println();      
-      resp_cnt=0;
-    }
-    else{
-      _Serial->print(F("AT+NSOST=0,"));
-      _Serial->print(serverIP);
-      _Serial->print(F(",5683,"));
-      _Serial->print(F("4"));
-      _Serial->print(F(",6000"));
-      printmsgID(msgID);
-      _Serial->println();
-      send_ACK=true;      
-    }
+    if(debug) Serial.println(F("Send ack"));
+    _Serial->print(F("AT+NSOST=0,"));
+    _Serial->print(serverIP);
+    _Serial->print(F(",5683,"));
+    _Serial->print(F("4"));
+    _Serial->print(F(",6000"));
+    printmsgID(msgID);
+    _Serial->println();
 
-    success=true;
+    send_ACK=true;   
+
     ACK=false;
     cnt_cmdgetrsp=0;
   }
   if(Msgstr.indexOf(rst)!=-1)
   {
-    //if(printstate) Serial.println(F("Reset"));
-    if(printstate) Serial.print(F("<< RST: "));
+    if(printstate && en_print) Serial.print(F("<< RST: "));
     flag_rcv=true;
-    post_process=false;
-    success=true;
     ACK=false;
     cnt_cmdgetrsp=0;
   }
   if(Msgstr.indexOf(non_con)!=-1)
   {
-    //if(printstate) Serial.println(F("Non-Confirmation"));
-    if(printstate) Serial.print(F("<< Non-Con: "));
+    if(printstate && en_print) Serial.print(F("<< Non-Con: "));
     flag_rcv=true;
-    post_process=false;
-    success=true;
     ACK=false;
     cnt_cmdgetrsp=0;
   }
@@ -896,63 +975,77 @@ void Magellan::print_rsp_Type(const String Msgstr,unsigned int msgID)
 */
 void Magellan::miniresponse(String rx)
 {
+  
   print_rsp_header(rx);
+  
 
+  bool en_print=(post_process && resp_msgID==post_ID) || (get_process && resp_msgID==get_ID);
 
+  String payload_rx=rx.substring(12,rx.length());
   String data_payload="";
+  unsigned int indexff=0;
 
-  unsigned int indexff=rx.indexOf(F("FF"));
+  
+  indexff=payload_rx.indexOf(F("FF"));
+  
 
-  if(rx.indexOf(F("FFF"))!=-1)
+  if(payload_rx.indexOf(F("FFF"))!=-1)
   {
-      data_payload=rx.substring(indexff+3,rx.length());
+      data_payload=payload_rx.substring(indexff+3,payload_rx.length());
 
-      if(printstate) Serial.print(F(" RSP:"));
-      data_buffer="";                                          //clr buffer
-      for(byte k=2;k<data_payload.length()+1;k+=2)
+      if(printstate && en_print) Serial.print(F("   RSP:"));
+      //if(!more_flag) data_buffer="";                                          //clr buffer
+      data_buffer="";
+      for(unsigned int k=2;k<data_payload.length()+1;k+=2)
       {
         char str=(char) strtol(&data_payload.substring(k-2,k)[0], NULL, 16);
-        if(printstate) Serial.print(str);
+        if(printstate && en_print) Serial.print(str);
 
         if(GETCONTENT or RCVRSP){
-          data_buffer+=str;
+            if (post_process && post_token==rsptoken || get_process && get_token==rsptoken){
+              data_buffer+=str;
+            }
+          
         }
       }
       if(GETCONTENT)
       {
-        rcvdata=data_buffer;
+        rcvdata+=data_buffer;
+        //if(!more_flag) data_buffer="";
         data_buffer="";
         getpayload=true;
       } 
-      if(printstate) Serial.println(F(""));
+      if(printstate && en_print) Serial.println(F(""));
   }
   else
   {
-      data_payload=rx.substring(indexff+2,rx.length());
-      if(printstate) Serial.print(F(" RSP:"));
-      data_buffer="";                                        //clr buffer
-      for(byte k=2;k<data_payload.length()+1;k+=2)
+      data_payload=payload_rx.substring(indexff+2,payload_rx.length());
+      if(printstate && en_print) Serial.print(F("   RSP:"));
+      //if(!more_flag) data_buffer="";
+      data_buffer="";                                       //clr buffer
+      for(unsigned int k=2;k<data_payload.length()+1;k+=2)
       {
         char str=(char) strtol(&data_payload.substring(k-2,k)[0], NULL, 16);
-        if(printstate) Serial.print(str);
+        if(printstate && en_print) Serial.print(str);
 
         if(GETCONTENT or RCVRSP){
-          data_buffer+=str;
+          if (post_process && post_token==rsptoken || get_process && get_token==rsptoken){
+            data_buffer+=str;
+          }
         }
       }
       if(GETCONTENT) {
-        rcvdata=data_buffer;
+        rcvdata+=data_buffer;
+        //if(!more_flag) data_buffer="";
         data_buffer="";
         getpayload=true;
       } 
-      if(printstate) Serial.println(F(""));     
+      if(printstate && en_print) Serial.println(F(""));     
   }
 
-  if(ACK)
+  if(success)
   { 
-    if(printstate) Serial.println(F("------------ End ------------"));
-    if(printstate) Serial.println();
-    //if(printstate) Serial.println();
+    if(printstate && en_print) Serial.println(F("------------ End ------------"));
   }
 }
 
@@ -961,7 +1054,7 @@ void Magellan:: waitResponse()
   unsigned long current=millis();
   if(en_chk_buff && (current-previous>=500) && !(_Serial->available()))
   {
-      _Serial->println(F("AT+NSORF=0,100"));
+      _Serial->println(F("AT+NSORF=0,512"));
       cnt_cmdgetrsp++;
       previous=current;
   }
@@ -982,18 +1075,15 @@ void Magellan:: waitResponse()
     {
       data_input+=data;
     }
-    if(debug) Serial.println(data_input); 
   }
   if(end){
-
+      if(debug) Serial.println(data_input); 
       if(data_input.indexOf(F("+NSONMI:"))!=-1)
       {
-          //if(debug) Serial.print(F("send_NSOMI "));
-          //if(debug) Serial.println(data_input);
+          if(debug) Serial.print(F("send_NSOMI "));
           if(data_input.indexOf(F("+NSONMI:"))!=-1)
           {
-            //if(debug) Serial.print(F("found NSONMI "));
-            _Serial->println(F("AT+NSORF=0,100"));
+            _Serial->println(F("AT+NSORF=0,512"));
             data_input=F("");
             send_NSOMI=true;
             if(printstate) Serial.println();
@@ -1002,10 +1092,10 @@ void Magellan:: waitResponse()
       }
       else
         {
-          //if(debug) Serial.print(F("get buffer "));
-          //if(debug) Serial.println(data_input);
+
 
           end=false;
+          
           if(data_input.indexOf(F("0,103.20.205.85"))!=-1)
           {
             int index1 = data_input.indexOf(F(","));
@@ -1015,9 +1105,27 @@ void Magellan:: waitResponse()
               index1 = data_input.indexOf(F(","),index2+1);
               index2 = data_input.indexOf(F(","),index1+1);
               index1 = data_input.indexOf(F(","),index2+1);
-              //if(debug) Serial.println(data_input.substring(index2+1,index1));
-              //if(debug) Serial.println(F("--->>>  Response "));
-              miniresponse(data_input.substring(index2+1,index1));
+
+              String prev_buffer=data_input.substring(index2+1,index1);
+
+              if(cnt_rcv_resp>=1 && prev_buffer.indexOf(F("FF"))!=-1 && more_flag){
+
+                miniresponse(data_input.substring(index2+1,index1));
+              }
+              else{
+                miniresponse(data_input.substring(index2+1,index1));
+              }
+
+              index2 = data_input.indexOf(F(","),index1+1);
+              if(data_input.substring(index1+1,index2)!="0"){
+                  if(debug) Serial.println(F("found buffer"));
+                  _Serial->println(F("AT+NSORF=0,512"));
+                  cnt_rcv_resp++;
+              }
+              else{
+                cnt_rcv_resp=0;
+              }
+              
             }
           }
           else if((data_input.indexOf(F("ERROR"))!=-1))
@@ -1035,6 +1143,20 @@ void Magellan:: waitResponse()
                 }
               }
             }
+
+          }
+          else if ((data_input.indexOf(F("REBOOT")))!=-1)
+          {
+              breboot_flag=true;
+          }
+
+          else if(breboot_flag && data_input.indexOf(F("OK"))!=-1)
+          {
+                Serial.print(F(">>HW RST"));
+                post_process=false;
+                get_process=false;
+                breboot_flag=false;
+                setup_module();
           }
 
           send_NSOMI=false;
